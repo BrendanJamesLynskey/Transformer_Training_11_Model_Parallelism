@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformer Training 11 — Model Parallelism: Pipeline, Tensor, Sequence and Expert</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700&family=Source+Code+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f2027;
+            --bg-card: #13272f;
+            --bg-code: #182f38;
+            --text-primary: #ede7dd;
+            --text-secondary: #8ca5a9;
+            --accent: #83c395;
+            --accent-dim: #83c39544;
+            --accent-glow: #83c39533;
+            --border: #23404a;
+            --font-display: 'Sora', sans-serif;
+            --font-mono: 'Source Code Pro', 'Source Code Pro', monospace;
+            --font-body: 'Manrope', sans-serif;
+            --max-width: 900px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 17px;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            position: relative;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .hero > * { position: relative; z-index: 1; }
+        .series-label {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+            margin-bottom: 1rem;
+        }
+        .hero h1 .accent { color: var(--accent); }
+        .hero .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin-bottom: 2rem;
+        }
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 2.5rem;
+        }
+        .tag {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+            white-space: nowrap;
+        }
+        .pipeline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+            max-width: var(--max-width);
+        }
+        .pipeline-step {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            padding: 0.3rem 0.7rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .pipeline-arrow { color: var(--accent); font-size: 0.9rem; font-weight: 700; }
+        .slide {
+            min-height: 100vh;
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .slide-number {
+            font-family: var(--font-display);
+            font-size: 5rem;
+            font-weight: 700;
+            color: var(--accent-dim);
+            position: absolute;
+            top: 2rem;
+            right: 1.5rem;
+            line-height: 1;
+            user-select: none;
+        }
+        .slide h2 {
+            font-family: var(--font-display);
+            font-size: 1.9rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 1.5rem;
+            line-height: 1.25;
+        }
+        .slide h3 {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .slide p { margin-bottom: 1rem; color: var(--text-secondary); }
+        .slide p strong { color: var(--text-primary); }
+        .slide ul, .slide ol { margin-bottom: 1rem; padding-left: 1.5rem; color: var(--text-secondary); }
+        .slide li { margin-bottom: 0.4rem; }
+        .slide li strong { color: var(--text-primary); }
+        .slide code {
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+            color: #cfd7d1;
+        }
+        .code-block {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 1.25rem 0;
+            overflow: hidden;
+        }
+        .code-header {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            background: rgba(131,195,149,0.08);
+            padding: 0.4rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .code-block pre { margin: 0; padding: 1rem; overflow-x: auto; }
+        .code-block code {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #cfd7d1;
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+        .kw { color: #f48f70; }
+        .fn { color: #d4c0ea; }
+        .str { color: #c3dbea; }
+        .cm { color: #8ca5a9; font-style: italic; }
+        .num { color: #a8cee8; }
+        .type { color: #eac48b; }
+        .dir { color: #f48f70; }
+        .mac { color: #eac48b; }
+        .table-wrap {
+            overflow-x: auto;
+            margin: 1.25rem 0;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th {
+            background: var(--bg-code);
+            color: var(--accent);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-display);
+            white-space: nowrap;
+        }
+        td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:nth-child(even) td { background: rgba(19,39,47,0.5); }
+        .diagram-flow {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-box {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-align: center;
+            white-space: nowrap;
+        }
+        .diagram-box.accent { border-color: var(--accent); color: var(--accent); background: rgba(131,195,149,0.08); }
+        .diagram-box.dim { color: var(--text-secondary); border-color: var(--border); }
+        .diagram-arrow { color: var(--accent); font-size: 1.3rem; font-weight: 700; }
+        .diagram-vertical {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-vertical .diagram-arrow { font-size: 1.1rem; }
+        .hierarchy {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .hierarchy-level { display: flex; align-items: center; gap: 0.75rem; }
+        .hierarchy-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 80px;
+            text-align: right;
+        }
+        .hierarchy-items { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+        .hierarchy-item {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .hierarchy-item.accent { border-color: var(--accent); color: var(--accent); background: rgba(131,195,149,0.08); }
+        .diagram-grid {
+            display: grid;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+        .diagram-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .diagram-panel {
+            padding: 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .diagram-panel.accent-border { border-left: 3px solid var(--accent); }
+        .diagram-panel h4 {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        .diagram-panel p, .diagram-panel ul { font-size: 0.85rem; }
+        .callout {
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1rem 1.25rem;
+            margin: 1.25rem 0;
+        }
+        .callout p { margin-bottom: 0; }
+        .callout p + p { margin-top: 0.5rem; }
+        .callout .callout-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+        }
+        .contents-list { list-style: none; padding-left: 0; counter-reset: contents; }
+        .contents-list li {
+            counter-increment: contents;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .contents-list li:last-child { border-bottom: none; }
+        .contents-list li::before {
+            content: counter(contents, decimal-leading-zero);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            min-width: 2rem;
+        }
+        .contents-list a { color: var(--text-primary); text-decoration: none; transition: color 0.2s; }
+        .contents-list a:hover { color: var(--accent); }
+        .footer {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .canvas-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.25rem 0;
+            overflow-x: auto;
+        }
+        .canvas-wrap canvas, .canvas-wrap svg { display: block; margin: 0 auto; max-width: 100%; }
+        .badge {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            padding: 0.1rem 0.45rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            vertical-align: middle;
+            margin-left: 0.3rem;
+        }
+        .badge.ok    { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+        .badge.warn  { border-color: #eac48b; color: #eac48b; background: rgba(234,196,139,0.08); }
+        .badge.bad   { border-color: #f48f70; color: #f48f70; background: rgba(244,143,112,0.08); }
+        @media (max-width: 640px) {
+            .slide { padding: 3rem 1rem; min-height: auto; }
+            .slide-number { font-size: 3rem; top: 1.5rem; right: 1rem; }
+            .slide h2 { font-size: 1.5rem; }
+            .diagram-grid.cols-2, .diagram-grid.cols-3 { grid-template-columns: 1fr; }
+            .pipeline { gap: 0.15rem; }
+            .pipeline-step { font-size: 0.6rem; padding: 0.2rem 0.4rem; }
+            .hero h1 { font-size: 1.8rem; }
+            table { font-size: 0.78rem; }
+        }
+        .slide p a, .slide td a, .slide li a, .callout a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+        .slide p a:hover, .slide td a:hover, .slide li a:hover, .callout a:hover { border-bottom-style: solid; }
+        .hero { overflow: hidden; }
+        .diagram-panel { min-width: 0; }
+        .metric-label .katex, .callout-label .katex, .series-label .katex,
+        .metric-label .katex *, .callout-label .katex * { text-transform: none; }
+        .canvas-wrap canvas { image-rendering: auto; }
+        .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.25rem 0; }
+        @media (max-width: 640px) { .katex-display { font-size: 0.8em; } }
+        .chart-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin: 1.25rem 0; }
+        .chart-wrap svg { display: block; width: 100%; height: auto; }
+        .chart-cap { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.4rem; }
+        .live-link { font-family: var(--font-mono); font-size: 0.8rem; margin-top: 1rem; }
+        .widget { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1.25rem 0; }
+        .widget .row { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; margin-bottom: 0.6rem; }
+        .widget label { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-secondary); display: flex; gap: 0.5rem; align-items: center; }
+        .widget input[type=range] { width: 160px; max-width: 100%; accent-color: var(--accent); }
+        .widget select { background: var(--bg-code); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.4rem; font-family: var(--font-mono); font-size: 0.78rem; }
+        .widget button { background: var(--bg-code); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0.35rem 0.8rem; font-family: var(--font-mono); font-size: 0.78rem; cursor: pointer; min-height: 36px; }
+        .widget button:hover { background: var(--accent-dim); }
+        .widget .out { font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-primary); }
+        .widget .cap { font-size: 0.82rem; color: var(--text-secondary); min-height: 2.6em; }
+        .widget svg { display: block; width: 100%; height: auto; }
+        .num-strong { color: var(--text-primary); font-weight: 600; }
+    /* deck-mobile-fix:hero */ .hero{overflow:hidden}@supports (overflow-x:clip){.hero{overflow:visible;overflow-x:clip}}
+    /* deck-mobile-fix:phone */ @media (max-width:640px){.diagram-box,.tier-fill,.section-divider>span,.action-btn{white-space:normal;overflow-wrap:anywhere}.diagram-grid>*,.diagram-panel,.diagram-box,.code-block,.callout,.metric,.control-group,.control-row>*,.pipeline-body,.roll-track>*,.tier-fill,.timeline-row>*{min-width:0;max-width:100%}p,li,a,code,td,th,.callout,.diagram-panel{overflow-wrap:break-word}pre{max-width:100%;overflow-x:auto}table{display:block;max-width:100%;overflow-x:auto}.katex-display,.bits,.canvas-wrap,.influence-map-wrapper,.timeline-track,div:has(>.bank-cell){max-width:100%;overflow-x:auto;overflow-y:hidden}select,input,img,video,iframe,.action-btn{max-width:100%}canvas{max-width:100%;height:auto}}
+            /* tt-charts */
+        .chart .plot-bg { fill: none; }
+        .chart .grid { stroke: var(--border); stroke-width: 1; }
+        .chart .axis { stroke: var(--text-secondary); stroke-width: 1; }
+        .chart .lbl { fill: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; }
+        .chart .lbl.ax { fill: var(--text-primary); font-size: 12.5px; }
+        .chart .hline { stroke: var(--text-secondary); stroke-dasharray: 2 4; }
+        .chart .ln { fill: none; stroke-width: 2.2; }
+        .chart .eb { stroke-width: 1.4; }
+        .chart .legend-bg { fill: var(--bg-primary); stroke: var(--border); opacity: 0.92; }
+        .s1 { stroke: #56b4e9; fill: #56b4e9; } .s2 { stroke: #e69f00; fill: #e69f00; }
+        .s3 { stroke: #009e73; fill: #3fbf96; } .s4 { stroke: #cc79a7; fill: #cc79a7; }
+        .s5 { stroke: #f0e442; fill: #f0e442; } .s6 { stroke: #d55e00; fill: #d55e00; }
+        .s0 { stroke: var(--text-secondary); fill: var(--text-secondary); }
+        .ln { fill: none !important; }
+        .chart .bar { stroke: none; opacity: 0.85; }
+        .chart .lbl.inbar { fill: var(--bg-primary); font-weight: 600; }
+        @media (max-width: 640px) { .chart .lbl { font-size: 14px; } .chart .lbl.ax { font-size: 14px; } .wg-text, .wg-dim { font-size: 15px; } }
+        .wg-cell { fill: var(--bg-code); stroke: var(--border); }
+        .wg-text { fill: var(--text-primary); font-family: var(--font-mono); font-size: 13px; }
+        .wg-dim { fill: var(--text-secondary); font-family: var(--font-mono); font-size: 13px; }
+        .wg-hot { fill: #e69f00; } .wg-done { fill: #009e73; } .wg-cool { fill: #56b4e9; } .wg-idle { fill: var(--bg-code); stroke: var(--border); }
+        .wg-fwd { fill: #56b4e9; } .wg-bwd { fill: #e69f00; }
+    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false})"></script>
+</head>
+<body>
+<header class="hero">
+    <div class="series-label">Transformer Training &mdash; Presentation 11</div>
+    <h1>Model <span class="accent">Parallelism</span></h1>
+    <p class="subtitle">When one device cannot hold the model, cut it up: layer by layer (a pipeline, with its bubble), inside each layer (tensor parallelism), along the sequence, or among experts. A live pipeline simulation, 3-D and 4-D layouts, and a systems model checked against published runs.</p>
+
+    <div class="tags">
+        <span class="tag">Pipeline</span>
+        <span class="tag">GPipe / 1F1B</span>
+        <span class="tag">Interleaving</span>
+        <span class="tag">Tensor parallel</span>
+        <span class="tag">Sequence / context parallel</span>
+        <span class="tag">Expert parallel</span>
+        <span class="tag">MFU validation</span>
+    </div>
+
+    <div class="pipeline">
+        <span class="pipeline-step">Pipeline (p)</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Tensor (t)</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Context (cp)</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Data (d)</span>
+    </div>
+</header>
+
+<section class="slide" id="slide-00">
+    <div class="slide-number">00</div>
+    <h2>Topics We&rsquo;ll Cover</h2>
+    <ul class="contents-list">
+        <li><a href="#slide-01">When the Model Does Not Fit</a></li>
+        <li><a href="#slide-02">Pipeline Parallelism and the Bubble</a></li>
+        <li><a href="#slide-03">A Pipeline, Simulated</a></li>
+        <li><a href="#slide-04">Interleaving: Smaller Chunks, Smaller Bubble</a></li>
+        <li><a href="#slide-05">Tensor Parallelism</a></li>
+        <li><a href="#slide-06">Sequence, Context and Expert Parallelism</a></li>
+        <li><a href="#slide-07">3-D and 4-D Layouts</a></li>
+        <li><a href="#slide-08">How Good Is the Systems Model?</a></li>
+        <li><a href="#slide-09">What to Take Away</a></li>
+    </ul>
+    <div class="callout">
+        <div class="callout-label">Live companion and sources</div>
+        <p>This deck follows <a href="https://transformer-decoder-explained.vercel.app/training/12-model-parallelism">chapter 12, parallelism II: model</a>, with a pipeline animation and a layout explorer. Numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> &sect;11a and &sect;12 (the site&rsquo;s training-systems model and its discrete-event pipeline simulation).</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-01">
+    <div class="slide-number">01</div>
+    <h2>When the Model Does Not Fit</h2>
+    <p>Data parallelism gives every device the whole model. When the model is too big for one device (<a href="https://brendanjameslynskey.github.io/Transformer_Training_09_Memory/">deck 09</a>), it has to be cut up:</p>
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border"><h4>Across layers: pipeline (p)</h4><p>Each device holds a contiguous block of layers; activations flow forward from device to device and gradients flow back.</p></div>
+        <div class="diagram-panel accent-border"><h4>Inside layers: tensor (t)</h4><p>Each layer&rsquo;s matrices are split across devices, which combine partial results with collectives.</p></div>
+        <div class="diagram-panel accent-border"><h4>Along the sequence: sequence / context (cp)</h4><p>Activations, and for long contexts attention itself, are split by position.</p></div>
+        <div class="diagram-panel accent-border"><h4>Among experts: expert (ep)</h4><p>A mixture-of-experts model puts different experts on different devices.</p></div>
+    </div>
+</section>
+
+<section class="slide" id="slide-02">
+    <div class="slide-number">02</div>
+    <h2>Pipeline Parallelism and the Bubble</h2>
+    <p>Give each of \(p\) devices a quarter (say) of the layers. One batch at a time would leave all but one device idle, so the batch is cut into \(m\) <strong>micro-batches</strong> that follow each other through the stages. At the start and end of each step the pipeline fills and drains; those idle slots are the <strong>bubble</strong>.</p>
+    $$T = \Big(m + \tfrac{p-1}{v}\Big)(t_f + t_b), \qquad \text{bubble} = \frac{p-1}{v\,m}$$
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border"><h4>GPipe</h4><p>Every micro-batch forward, then every one backward (<a href="https://arxiv.org/abs/1811.06965">Huang et al. 2019</a>). Each device must hold all \(m\) micro-batches&rsquo; activations.</p></div>
+        <div class="diagram-panel accent-border"><h4>1F1B</h4><p>One forward, one backward: once the pipeline is full, each device alternates. The same bubble, but a device holds at most \(p\) micro-batches&rsquo; activations (<a href="https://arxiv.org/abs/2104.04473">Narayanan et al. 2021, &sect;2.2</a>).</p></div>
+    </div>
+</section>
+
+<section class="slide" id="slide-03">
+    <div class="slide-number">03</div>
+    <h2>A Pipeline, Simulated</h2>
+    <p>A discrete-event simulation of every forward (1 time unit) and backward (2 units) on every device, each waiting for its inputs. Choose the schedule and sizes; the idle time is the bubble.</p>
+    <div class="widget" id="pp-widget">
+        <div class="row">
+            <label>schedule <select id="pp-k"><option value="gpipe">GPipe</option><option value="1f1b" selected>1F1B</option></select></label>
+            <label>devices p <select id="pp-p"><option>2</option><option selected>4</option><option>8</option></select></label>
+            <label>micro-batches m <select id="pp-m"><option>4</option><option selected>8</option><option>16</option></select></label>
+            <button id="pp-play">play</button>
+        </div>
+        <svg id="pp-svg" viewBox="0 0 480 170" role="img" aria-label="Pipeline schedule"></svg>
+        <div class="out" id="pp-out"></div>
+        <div class="cap" id="pp-cap" aria-live="polite"></div>
+    </div>
+    <script>
+    (function () {
+        function simulate(kind, p, m) {
+            const tf = 1, tb = 2, order = [];
+            for (let d = 0; d < p; d++) {
+                const o = [];
+                if (kind === 'gpipe') { for (let j = 0; j < m; j++) o.push(['F', j]); for (let j = 0; j < m; j++) o.push(['B', j]); }
+                else {
+                    const w = Math.min(p - d - 1, m);
+                    for (let j = 0; j < w; j++) o.push(['F', j]);
+                    for (let i = 0; i < m - w; i++) { o.push(['F', w + i]); o.push(['B', i]); }
+                    for (let j = m - w; j < m; j++) o.push(['B', j]);
+                }
+                order.push(o);
+            }
+            const end = {}, ops = [], free = new Array(p).fill(0), next = new Array(p).fill(0);
+            let left = p * 2 * m;
+            while (left > 0) {
+                let progress = false;
+                for (let d = 0; d < p; d++) {
+                    if (next[d] >= order[d].length) continue;
+                    const [k, j] = order[d][next[d]];
+                    const dep = k === 'F' ? (d === 0 ? 0 : end['F' + (d - 1) + '_' + j]) : (d === p - 1 ? end['F' + d + '_' + j] : end['B' + (d + 1) + '_' + j]);
+                    if (dep === undefined) continue;
+                    const s = Math.max(free[d], dep), e = s + (k === 'F' ? tf : tb);
+                    end[k + d + '_' + j] = e; free[d] = e; ops.push({ d, k, j, s, e }); next[d]++; left--; progress = true;
+                }
+                if (!progress) throw new Error('deadlock');
+            }
+            const span = Math.max(...free), work = m * (tf + tb);
+            return { ops, span, bubble: (span - work) / work };
+        }
+        window.__pipe = simulate;
+        let t = 1e9, timer = null;
+        function draw() {
+            const kind = document.getElementById('pp-k').value, p = +document.getElementById('pp-p').value, m = +document.getElementById('pp-m').value;
+            const r = simulate(kind, p, m), rowH = Math.min(30, 130 / p), sc = 400 / r.span;
+            let g = '';
+            for (let d = 0; d < p; d++) {
+                g += '<text class="wg-dim" x="4" y="' + (20 + d * rowH + rowH * 0.6) + '">dev ' + (d + 1) + '</text>';
+                g += '<rect x="66" y="' + (20 + d * rowH) + '" width="' + (r.span * sc) + '" height="' + (rowH - 4) + '" class="wg-idle"/>';
+            }
+            for (const o of r.ops) if (o.s < t) {
+                const w = (Math.min(o.e, t) - o.s) * sc;
+                g += '<rect x="' + (66 + o.s * sc) + '" y="' + (20 + o.d * rowH) + '" width="' + Math.max(w - 1, 0.5) + '" height="' + (rowH - 4) + '" class="' + (o.k === 'F' ? 'wg-fwd' : 'wg-bwd') + '"/>';
+                if (rowH >= 20 && w > 12) g += '<text class="wg-text" style="fill:var(--bg-primary);font-size:11px" x="' + (66 + o.s * sc + 3) + '" y="' + (20 + o.d * rowH + rowH * 0.6) + '">' + o.k + (o.j + 1) + '</text>';
+            }
+            if (t < r.span) g += '<line x1="' + (66 + t * sc) + '" x2="' + (66 + t * sc) + '" y1="14" y2="' + (20 + p * rowH) + '" stroke="var(--text-primary)"/>';
+            document.getElementById('pp-svg').innerHTML = g;
+            document.getElementById('pp-out').textContent = 'makespan ' + r.span + ' units for ' + m * 3 + ' units of work per device · bubble ' + r.bubble.toFixed(4) + ' · closed form (p − 1)/m = ' + ((p - 1) / m).toFixed(4);
+            document.getElementById('pp-cap').textContent = 'Blue: forward passes. Orange: backward passes (twice as long). Grey: idle, the bubble. ' + (kind === '1f1b' ? 'In 1F1B device 1 never holds more than ' + p + ' micro-batches in flight.' : 'In GPipe every device holds all ' + m + ' micro-batches before the first backward.');
+            return r;
+        }
+        ['pp-k', 'pp-p', 'pp-m'].forEach(id => document.getElementById(id).addEventListener('change', () => { t = 1e9; draw(); }));
+        document.getElementById('pp-play').onclick = () => {
+            if (timer) { clearInterval(timer); timer = null; return; }
+            const span = draw().span; t = 0;
+            timer = setInterval(() => { t += span / 60; draw(); if (t >= span) { clearInterval(timer); timer = null; t = 1e9; draw(); } }, 60);
+        };
+        draw();
+    })();
+    </script>
+</section>
+
+<section class="slide" id="slide-04">
+    <div class="slide-number">04</div>
+    <h2>Interleaving: Smaller Chunks, Smaller Bubble</h2>
+    <p>Megatron-LM&rsquo;s <strong>interleaved</strong> schedule gives each device \(v\) smaller chunks of layers spread round the pipeline (device 1 holds layers 1&ndash;2 and 9&ndash;10, say), cutting the bubble to \((p-1)/(vm)\), at the price of \(v\) times as many sends between devices. The site&rsquo;s simulation against the closed forms (results.md &sect;12):</p>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Schedule</th><th>Devices p</th><th>Micro-batches m</th><th>Chunks v</th><th>Simulated bubble</th><th>Closed form</th></tr></thead>
+            <tbody>
+                <tr><td>gpipe</td><td>4</td><td>8</td><td>1</td><td>0.3750</td><td>0.3750</td></tr>
+                <tr><td>1f1b</td><td>4</td><td>8</td><td>1</td><td>0.3750</td><td>0.3750</td></tr>
+                <tr><td>interleaved</td><td>4</td><td>8</td><td>2</td><td>0.1875</td><td>0.1875</td></tr>
+                <tr><td>interleaved</td><td>4</td><td>8</td><td>4</td><td>0.0938</td><td>0.0938</td></tr>
+                <tr><td>1f1b</td><td>8</td><td>32</td><td>1</td><td>0.2188</td><td>0.2188</td></tr>
+                <tr><td>interleaved</td><td>8</td><td>32</td><td>4</td><td>0.0547</td><td>0.0547</td></tr>
+                <tr><td>gpipe</td><td>16</td><td>32</td><td>1</td><td>0.4688</td><td>0.4688</td></tr>
+                <tr><td>1f1b</td><td>16</td><td>64</td><td>1</td><td>0.2344</td><td>0.2344</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p>Largest difference between simulation and formula: 0.0.</p>
+</section>
+
+<section class="slide" id="slide-05">
+    <div class="slide-number">05</div>
+    <h2>Tensor Parallelism</h2>
+    <p>Cut each layer&rsquo;s matrices instead (<a href="https://arxiv.org/abs/1909.08053">Shoeybi et al. 2019</a>, Megatron-LM):</p>
+    <div class="diagram-flow">
+        <div class="diagram-box">X (replicated)</div><span class="diagram-arrow">&rarr;</span>
+        <div class="diagram-box accent">W<sub>1</sub> split by columns: GELU(XW<sub>1</sub><sup>(i)</sup>) per device</div><span class="diagram-arrow">&rarr;</span>
+        <div class="diagram-box accent">W<sub>2</sub> split by rows: partial sums</div><span class="diagram-arrow">&rarr;</span>
+        <div class="diagram-box">all-reduce</div>
+    </div>
+    <p>The FFN&rsquo;s first matrix (<a href="https://transformer-decoder-explained.vercel.app/learn/04-ffn">Part 1, chapter 4</a>) split by columns lets each of \(t\) devices compute its own slice of the hidden layer, GELU included, with no communication; the second, split by rows, gives each a partial sum of the output, and one all-reduce adds them. Attention splits the same way, a group of heads per device (the heads are already independent, <a href="https://transformer-decoder-explained.vercel.app/learn/03-attention">Part 1, chapter 3</a>).</p>
+    <div class="callout">
+        <div class="callout-label">Why it stays inside one server</div>
+        <p>Two all-reduces of the activations per layer in the forward pass and two in the backward, every layer, every micro-batch: far more traffic than data parallelism&rsquo;s once-per-step gradient sync, so tensor parallelism lives on NVLink. In the systems model, Megatron&rsquo;s 18.4-billion-parameter run (\(t = 8\), no pipeline) spends 1.67 s of its 10.61 s step in those all-reduces.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-06">
+    <div class="slide-number">06</div>
+    <h2>Sequence, Context and Expert Parallelism</h2>
+    <div class="diagram-grid cols-3">
+        <div class="diagram-panel accent-border"><h4>Sequence parallelism</h4><p>Tensor parallelism shares the matrix products but not LayerNorm or dropout, whose activations each device would still hold in full. Sequence parallelism splits those along the sequence, turning each all-reduce into a reduce-scatter and an all-gather (the same bytes) and cutting activations per device by \(t\) (<a href="https://arxiv.org/abs/2205.05198">Korthikanti et al. 2022</a>).</p></div>
+        <div class="diagram-panel accent-border"><h4>Context parallelism</h4><p>For very long sequences, split the sequence itself for attention too: each device keeps its own queries and gets everyone&rsquo;s keys and values, passed round a ring while computing (<a href="https://arxiv.org/abs/2310.01889">Liu et al. 2023</a>, ring attention) or all-gathered first, as Llama 3 does for its 128K-token stage (<a href="https://arxiv.org/abs/2407.21783">&sect;3.3.2</a>).</p></div>
+        <div class="diagram-panel accent-border"><h4>Expert parallelism</h4><p>Mixture-of-experts layers (<a href="https://arxiv.org/abs/2006.16668">GShard</a>; <a href="https://arxiv.org/abs/2101.03961">Switch Transformers</a>) send each token to its expert&rsquo;s device and back with two <strong>all-to-all</strong> exchanges per layer, where every device sends a different piece to every other.</p></div>
+    </div>
+</section>
+
+<section class="slide" id="slide-07">
+    <div class="slide-number">07</div>
+    <h2>3-D and 4-D Layouts</h2>
+    <p>Real runs combine them: tensor parallelism inside a server, pipeline stages across servers, data parallelism (often sharded, ZeRO or FSDP) outermost. Llama 3 405B trained with four dimensions, [tensor, context, pipeline, data], on up to 16,384 GPUs; its first stage used 8-way tensor, 16-stage pipeline and 64-way data parallelism (<a href="https://arxiv.org/abs/2407.21783">Grattafiori et al. 2024, Table 4</a>).</p>
+    <div class="hierarchy">
+        <div class="hierarchy-level"><span class="hierarchy-label">tensor t = 8</span><div class="hierarchy-items"><span class="hierarchy-item accent">inside one 8-GPU server, NVLink</span></div></div>
+        <div class="hierarchy-level"><span class="hierarchy-label">pipeline p = 16</span><div class="hierarchy-items"><span class="hierarchy-item">across servers: point-to-point sends of activations</span></div></div>
+        <div class="hierarchy-level"><span class="hierarchy-label">data d = 64</span><div class="hierarchy-items"><span class="hierarchy-item">outermost: one gradient sync per step</span></div></div>
+    </div>
+    <p>8 &times; 16 &times; 64 = 8,192 GPUs. Choosing a layout trades the memory each device must hold against the time lost to communication and bubbles; the site&rsquo;s layout explorer runs its systems model on published shapes.</p>
+</section>
+
+<section class="slide" id="slide-08">
+    <div class="slide-number">08</div>
+    <h2>How Good Is the Systems Model?</h2>
+    <p>Arithmetic with <strong>one fitted constant</strong>: the fraction of peak the matrix products reach, &eta; = 0.473, fitted on Megatron-LM&rsquo;s smallest run. Every other row is a prediction for a published run, with only shapes, layouts, batch sizes and GPU specifications as inputs (<a href="https://arxiv.org/abs/2104.04473">Narayanan et al. 2021, Table 1</a>; <a href="https://arxiv.org/abs/2407.21783">Llama 3, Table 4</a>; results.md &sect;11a):</p>
+    <div class="chart-wrap"><svg class="chart" viewBox="0 0 480 290" role="img" aria-label="Systems model against published runs">
+<rect class="plot-bg" x="62" y="18" width="392" height="230"/>
+<line class="grid" x1="62" x2="454" y1="248.0" y2="248.0"/>
+<text class="lbl" x="56" y="252.0" text-anchor="end">100</text>
+<line class="grid" x1="62" x2="454" y1="185.8" y2="185.8"/>
+<text class="lbl" x="56" y="189.8" text-anchor="end">200</text>
+<line class="grid" x1="62" x2="454" y1="123.7" y2="123.7"/>
+<text class="lbl" x="56" y="127.7" text-anchor="end">300</text>
+<line class="grid" x1="62" x2="454" y1="61.5" y2="61.5"/>
+<text class="lbl" x="56" y="65.5" text-anchor="end">400</text>
+<line class="grid" x1="62.0" x2="62.0" y1="18" y2="248"/>
+<text class="lbl" x="62.0" y="264" text-anchor="middle">100</text>
+<line class="grid" x1="167.9" x2="167.9" y1="18" y2="248"/>
+<text class="lbl" x="167.9" y="264" text-anchor="middle">200</text>
+<line class="grid" x1="273.9" x2="273.9" y1="18" y2="248"/>
+<text class="lbl" x="273.9" y="264" text-anchor="middle">300</text>
+<line class="grid" x1="379.8" x2="379.8" y1="18" y2="248"/>
+<text class="lbl" x="379.8" y="264" text-anchor="middle">400</text>
+<line class="axis" x1="62" x2="454" y1="248" y2="248"/>
+<line class="axis" x1="62" x2="62" y1="18" y2="248"/>
+<text class="lbl ax" x="258" y="284" text-anchor="middle">published TFLOP/s per GPU</text>
+<text class="lbl ax" x="13" y="133" text-anchor="middle" transform="rotate(-90 13 133)">systems model TFLOP/s per GPU</text>
+<clipPath id="clip133408785665920"><rect x="62" y="18" width="392" height="230"/></clipPath>
+<g clip-path="url(#clip133408785665920)">
+<path class="ln s0" d="M62.0,248.0 L485.8,-0.6" stroke-dasharray="5 4"/>
+<circle class="pt s1" cx="101.2" cy="225.0" r="4"/>
+<circle class="pt s1" cx="102.3" cy="228.4" r="4"/>
+<circle class="pt s1" cx="106.5" cy="233.1" r="4"/>
+<circle class="pt s1" cx="99.1" cy="235.8" r="4"/>
+<circle class="pt s1" cx="102.3" cy="233.4" r="4"/>
+<circle class="pt s1" cx="104.4" cy="230.8" r="4"/>
+<circle class="pt s1" cx="112.9" cy="228.6" r="4"/>
+<circle class="pt s1" cx="120.3" cy="226.9" r="4"/>
+<circle class="pt s1" cx="128.7" cy="227.2" r="4"/>
+<circle class="pt s1" cx="128.7" cy="227.6" r="4"/>
+<circle class="pt s2" cx="411.6" cy="70.3" r="5"/>
+<circle class="pt s2" cx="379.8" cy="86.3" r="5"/>
+<circle class="pt s2" cx="358.6" cy="74.3" r="5"/>
+</g>
+<g class="legend"><rect class="legend-bg" x="68" y="24" width="239" height="56" rx="4"/><line class="ln s0" x1="76" x2="94" y1="34" y2="34" stroke-dasharray="5 4"/><text class="lbl" x="99" y="38">published = predicted</text><line class="ln s1" x1="76" x2="94" y1="50" y2="50"/><text class="lbl" x="99" y="54">Megatron-LM, A100 (1.7B fitted)</text><line class="ln s2" x1="76" x2="94" y1="66" y2="66"/><text class="lbl" x="99" y="70">Llama 3 405B, H100</text></g>
+</svg><div class="chart-cap">Each point is one published run: Narayanan et al. 2021 Table 1 (A100) and Llama 3 Table 4 (H100). Points below the dashed line are under-predictions (results.md &sect;11a).</div></div>
+    <p><strong>Stated band: every prediction within 18.6% of the published throughput</strong> (Megatron 18.6%, Llama 3 10.3%; mean 10.8%). Every prediction is low: the model overlaps nothing, and one &eta; cannot follow matrix products getting more efficient as models widen (Megatron&rsquo;s measured throughput per GPU rises from 137 to 163 TFLOP/s across its table; the model&rsquo;s stays near 130). Assumptions where the papers are silent: one sequence per micro-batch, the most interleaving the layer count allows, BF16 on the wire.</p>
+</section>
+
+<section class="slide" id="slide-09">
+    <div class="slide-number">09</div>
+    <h2>What to Take Away</h2>
+    <ul>
+        <li><strong>Pipeline</strong>: bubble \((p-1)/(vm)\); 1F1B caps in-flight activations at \(p\); interleaving divides the bubble by \(v\).</li>
+        <li><strong>Tensor</strong>: column-then-row splits, two all-reduces per layer each way: keep it on NVLink.</li>
+        <li><strong>Sequence / context / expert</strong> split activations, attention and experts; experts cost all-to-alls.</li>
+        <li>Real runs are 3-D/4-D; a simple model with one fitted constant predicts twelve published runs within 18.6%, always low.</li>
+    </ul>
+    <p class="live-link">Animated: <a href="https://transformer-decoder-explained.vercel.app/training/12-model-parallelism">chapter 12, parallelism II: model</a> &middot; hardware: <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_NVIDIA_GPUs">NVIDIA GPU Architectures</a>, <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Google_TPUs">Google TPUs</a> &middot; next: <a href="https://brendanjameslynskey.github.io/Transformer_Training_12_Training_over_Slow_Links/">deck 12, training over slow links</a></p>
+</section>
+
+<footer class="footer">
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-decoder-explained.vercel.app/training/12-model-parallelism">chapter 12, Parallelism II: model</a> of <a href="https://transformer-decoder-explained.vercel.app/training">Transformer Decoder Explained, Part 2</a></p>
+    <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">&larr; 10 Data Parallel</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/LLM_Hub_Transformer_Training/">Series index</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/Transformer_Training_12_Training_over_Slow_Links/">12 Slow Links &rarr;</a></p>
+    <p style="margin-top: 0.5rem; font-size: 0.75rem;">Measured numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> (transformer-explainer @15b1c9f). Code on these slides is cut from that repository.</p>
+</footer>
+<script>
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.slide').forEach(slide => {
+        slide.style.opacity = '0';
+        slide.style.transform = 'translateY(30px)';
+        slide.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+        observer.observe(slide);
+    });
+</script>
+</body>
+</html>
