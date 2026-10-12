@@ -494,7 +494,7 @@
     </ul>
     <div class="callout">
         <div class="callout-label">Live companion and sources</div>
-        <p>This deck follows <a href="https://transformer-decoder-explained.vercel.app/training/12-model-parallelism">chapter 12, parallelism II: model</a>, with a pipeline animation and a layout explorer. Numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> &sect;11a and &sect;12 (the site&rsquo;s training-systems model and its discrete-event pipeline simulation).</p>
+        <p>This deck follows <a href="https://transformer-training-explained.vercel.app/training/12-model-parallelism">chapter 12, parallelism II: model</a>, with a pipeline animation and a layout explorer. Numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> &sect;11a and &sect;12 (the site&rsquo;s training-systems model and its discrete-event pipeline simulation).</p>
     </div>
 </section>
 
@@ -687,8 +687,8 @@
 <line class="axis" x1="62" x2="62" y1="18" y2="248"/>
 <text class="lbl ax" x="258" y="284" text-anchor="middle">published TFLOP/s per GPU</text>
 <text class="lbl ax" x="13" y="133" text-anchor="middle" transform="rotate(-90 13 133)">systems model TFLOP/s per GPU</text>
-<clipPath id="clip133408785665920"><rect x="62" y="18" width="392" height="230"/></clipPath>
-<g clip-path="url(#clip133408785665920)">
+<clipPath id="clip129418996956736"><rect x="62" y="18" width="392" height="230"/></clipPath>
+<g clip-path="url(#clip129418996956736)">
 <path class="ln s0" d="M62.0,248.0 L485.8,-0.6" stroke-dasharray="5 4"/>
 <circle class="pt s1" cx="101.2" cy="225.0" r="4"/>
 <circle class="pt s1" cx="102.3" cy="228.4" r="4"/>
@@ -718,11 +718,11 @@
         <li><strong>Sequence / context / expert</strong> split activations, attention and experts; experts cost all-to-alls.</li>
         <li>Real runs are 3-D/4-D; a simple model with one fitted constant predicts twelve published runs within 18.6%, always low.</li>
     </ul>
-    <p class="live-link">Animated: <a href="https://transformer-decoder-explained.vercel.app/training/12-model-parallelism">chapter 12, parallelism II: model</a> &middot; hardware: <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_NVIDIA_GPUs">NVIDIA GPU Architectures</a>, <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Google_TPUs">Google TPUs</a> &middot; next: <a href="https://brendanjameslynskey.github.io/Transformer_Training_12_Training_over_Slow_Links/">deck 12, training over slow links</a></p>
+    <p class="live-link">Animated: <a href="https://transformer-training-explained.vercel.app/training/12-model-parallelism">chapter 12, parallelism II: model</a> &middot; hardware: <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_NVIDIA_GPUs">NVIDIA GPU Architectures</a>, <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Google_TPUs">Google TPUs</a> &middot; next: <a href="https://brendanjameslynskey.github.io/Transformer_Training_12_Training_over_Slow_Links/">deck 12, training over slow links</a></p>
 </section>
 
 <footer class="footer">
-    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-decoder-explained.vercel.app/training/12-model-parallelism">chapter 12, Parallelism II: model</a> of <a href="https://transformer-decoder-explained.vercel.app/training">Transformer Decoder Explained, Part 2</a></p>
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-training-explained.vercel.app/training/12-model-parallelism">chapter 12, Parallelism II: model</a> of <a href="https://transformer-training-explained.vercel.app/training">Transformer Decoder Explained, Part 2</a></p>
     <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">&larr; 10 Data Parallel</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/LLM_Hub_Transformer_Training/">Series index</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/Transformer_Training_12_Training_over_Slow_Links/">12 Slow Links &rarr;</a></p>
     <p style="margin-top: 0.5rem; font-size: 0.75rem;">Measured numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> (transformer-explainer @15b1c9f). Code on these slides is cut from that repository.</p>
 </footer>
