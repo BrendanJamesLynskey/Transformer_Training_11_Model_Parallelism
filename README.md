@@ -8,7 +8,7 @@ Pipeline parallelism and the bubble (live GPipe/1F1B simulation); interleaving; 
 
 ## Live, animated companion
 
-This deck is the slide companion to Part 2 (Training) of [Transformer Decoder Explained](https://transformer-training-explained.vercel.app/training), where the same model trains in your browser:
+This deck is the slide companion to [Training](https://transformer-training-explained.vercel.app/training), the second site of the Foundations track (after Decoder), where the Decoder's model trains in your browser:
 
 - [Chapter 12: Parallelism II: model](https://transformer-training-explained.vercel.app/training/12-model-parallelism)
 

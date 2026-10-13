@@ -632,7 +632,7 @@
         <div class="diagram-box accent">W<sub>2</sub> split by rows: partial sums</div><span class="diagram-arrow">&rarr;</span>
         <div class="diagram-box">all-reduce</div>
     </div>
-    <p>The FFN&rsquo;s first matrix (<a href="https://transformer-decoder-explained.vercel.app/learn/04-ffn">Part 1, chapter 4</a>) split by columns lets each of \(t\) devices compute its own slice of the hidden layer, GELU included, with no communication; the second, split by rows, gives each a partial sum of the output, and one all-reduce adds them. Attention splits the same way, a group of heads per device (the heads are already independent, <a href="https://transformer-decoder-explained.vercel.app/learn/03-attention">Part 1, chapter 3</a>).</p>
+    <p>The FFN&rsquo;s first matrix (<a href="https://transformer-decoder-explained.vercel.app/learn/04-ffn">Decoder, chapter 4</a>) split by columns lets each of \(t\) devices compute its own slice of the hidden layer, GELU included, with no communication; the second, split by rows, gives each a partial sum of the output, and one all-reduce adds them. Attention splits the same way, a group of heads per device (the heads are already independent, <a href="https://transformer-decoder-explained.vercel.app/learn/03-attention">Decoder, chapter 3</a>).</p>
     <div class="callout">
         <div class="callout-label">Why it stays inside one server</div>
         <p>Two all-reduces of the activations per layer in the forward pass and two in the backward, every layer, every micro-batch: far more traffic than data parallelism&rsquo;s once-per-step gradient sync, so tensor parallelism lives on NVLink. In the systems model, Megatron&rsquo;s 18.4-billion-parameter run (\(t = 8\), no pipeline) spends 1.67 s of its 10.61 s step in those all-reduces.</p>
@@ -687,8 +687,8 @@
 <line class="axis" x1="62" x2="62" y1="18" y2="248"/>
 <text class="lbl ax" x="258" y="284" text-anchor="middle">published TFLOP/s per GPU</text>
 <text class="lbl ax" x="13" y="133" text-anchor="middle" transform="rotate(-90 13 133)">systems model TFLOP/s per GPU</text>
-<clipPath id="clip129418996956736"><rect x="62" y="18" width="392" height="230"/></clipPath>
-<g clip-path="url(#clip129418996956736)">
+<clipPath id="clip136114096093248"><rect x="62" y="18" width="392" height="230"/></clipPath>
+<g clip-path="url(#clip136114096093248)">
 <path class="ln s0" d="M62.0,248.0 L485.8,-0.6" stroke-dasharray="5 4"/>
 <circle class="pt s1" cx="101.2" cy="225.0" r="4"/>
 <circle class="pt s1" cx="102.3" cy="228.4" r="4"/>
@@ -722,7 +722,7 @@
 </section>
 
 <footer class="footer">
-    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-training-explained.vercel.app/training/12-model-parallelism">chapter 12, Parallelism II: model</a> of <a href="https://transformer-training-explained.vercel.app/training">Transformer Decoder Explained, Part 2</a></p>
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Transformer_Training">Transformer Training series</a> &middot; live, animated companion: <a href="https://transformer-training-explained.vercel.app/training/12-model-parallelism">chapter 12, Parallelism II: model</a> of the <a href="https://transformer-training-explained.vercel.app/training">Training</a> site</p>
     <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://brendanjameslynskey.github.io/Transformer_Training_10_Data_Parallelism_and_ZeRO/">&larr; 10 Data Parallel</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/LLM_Hub_Transformer_Training/">Series index</a> &nbsp;&middot;&nbsp; <a href="https://brendanjameslynskey.github.io/Transformer_Training_12_Training_over_Slow_Links/">12 Slow Links &rarr;</a></p>
     <p style="margin-top: 0.5rem; font-size: 0.75rem;">Measured numbers: <a href="https://github.com/BrendanJamesLynskey/transformer-explainer/blob/main/results.md">results.md</a> (transformer-explainer @15b1c9f). Code on these slides is cut from that repository.</p>
 </footer>
